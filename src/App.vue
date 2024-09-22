@@ -1,15 +1,15 @@
 <template>
   <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <ImageClassifier/>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import ImageClassifier from './components/ImageClassifier.vue';
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    ImageClassifier
   }
 }
 </script>
