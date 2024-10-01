@@ -13,7 +13,7 @@
         required: true,
       },
       classNumber: {
-        type: String,
+        type: Number,
         required: true,
       },
       isSelected: {

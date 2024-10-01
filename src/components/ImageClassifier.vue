@@ -1,50 +1,70 @@
 <template>
   <div>
     <button @click="exportMappings">Export Mappings</button>
+    <div class="pagination">
+      <button @click="prevPage" :disabled="currentPage === 1">Previous</button>
+      <span>Page {{ currentPage }} of {{ totalPages }}</span>
+      <button @click="nextPage" :disabled="currentPage === totalPages">Next</button>
+    </div>
+    <div class="pagination">
+      <input v-model.number="targetPage" type="number" min="1" :max="totalPages" placeholder="Enter page number" />
+      <button @click="goToPage">Go to Page</button>
+    </div>
+    
     <table class="predictions-table" v-if="Object.keys(resultData).length > 0">
       <thead>
         <tr>
           <th>Image</th>
-          <th v-for="n in 5" :key="n">Prediction {{ n }}</th>
-          <th>Custom class</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(predictions, image) in resultData" :key="image">
-          <td>
-            <img :src="getCroppedImagePath(image)" :alt="`Cropped ${image}`" />
-          </td>
+        <div v-for="(predictions, image) in paginatedData" :key="image + '-rows'">
+          <tr :key="image + '-first-row'">
+            <td rowspan="2">
+              <img :src="getCroppedImagePath(image)" :alt="`Cropped ${image}`" />
+              <p class="small_label">{{ image }}</p>
+            </td>
+            <td v-for="classPredictions in predictions[0]" :key="classPredictions + '-first'">
+              <prediction-image
+                :imagePath="getImagePath(classPredictions)"
+                :classNumber="classPredictions"
+                :isSelected="mappings[image] === classPredictions"
+                @select="setMapping(image, classPredictions)"
+              />
+            </td>
+            <td rowspan="2">
+              <input
+                v-model="mappings[image]"
+                placeholder="Enter class number"
+                @input="handleCustomClass(image)"
+              />
+              <p>Custom class: {{ mappings[image] }}</p>
+            </td>
+          </tr>
 
-          <td v-for="classPredictions in predictions[0]" :key="classPredictions">
-          <prediction-image
-            :imagePath="getImagePath(classPredictions)"
-            :classNumber="classPredictions"
-            :isSelected="mappings[image] === classPredictions"
-            @select="setMapping(image, classPredictions)"
-          />
-          </td>
-          <td>
-            <input
-              v-model="customClasses[image]"
-              placeholder="Enter class number"
-              @input="saveCustomClass(image)"
-            />
-          </td>
-        </tr>
-        
-        <tr v-for="(predictions, image) in resultData" :key="image + '-second-row'">
-          <td><p class="small_label">{{ image }}</p></td>
-          <td v-for="classPredictions in predictions[1]" :key="classPredictions">
-          <prediction-image
-            :imagePath="getImagePath(classPredictions)"
-            :classNumber="classPredictions"
-            :isSelected="mappings[image] === classPredictions"
-            @select="setMapping(image, classPredictions)"
-          />
-          </td>
-        </tr>
+          <tr :key="image + '-second-row'">
+            <td v-for="classPredictions in predictions[1]" :key="classPredictions + '-second'">
+              <prediction-image
+                :imagePath="getImagePath(classPredictions)"
+                :classNumber="classPredictions"
+                :isSelected="mappings[image] === classPredictions"
+                @select="setMapping(image, classPredictions)"
+              />
+            </td>
+          </tr>
+        </div>
       </tbody>
     </table>
+
+    <div class="pagination">
+      <button @click="prevPage" :disabled="currentPage === 1">Previous</button>
+      <span>Page {{ currentPage }} of {{ totalPages }}</span>
+      <button @click="nextPage" :disabled="currentPage === totalPages">Next</button>
+    </div>
+    <div class="pagination">
+      <input v-model.number="targetPage" type="number" min="1" :max="totalPages" placeholder="Enter page number" />
+      <button @click="goToPage">Go to Page</button>
+    </div>
   </div>
 </template>
 
@@ -58,49 +78,63 @@ export default {
   },
   data() {
     return {
-      imageData: {}, // Make sure it's declared here.
+      imageData: {}, 
       resultData: {},
-      mappings: {}, // The mapping to store user selections.
+      currentPage: 1,
+      imagesPerPage: 10,
+      targetPage: 1,
+      mappings: {}, 
       customClasses: {},
     };
   },
+  computed: {
+    totalPages() {
+      return Math.ceil(Object.keys(this.resultData).length / this.imagesPerPage);
+    },
+    paginatedData() {
+      const entriesArray = Object.entries(this.resultData); // Convert the object into an array of [key, value] pairs
+      const start = (this.currentPage - 1) * this.imagesPerPage * 2;
+      const end = start + this.imagesPerPage;
+
+      const paginatedEntries = entriesArray.slice(start, end); 
+
+      return Object.fromEntries(paginatedEntries);
+    }
+  },
   created() {
-  axios.get('/result.json')  // '/public' folder serves static assets directly
-    .then((response) => {
-      this.resultData = response.data;
-      this.loadMappings();
-    })
-    .catch((error) => {
-      console.error('Error loading result.json:', error);
-    });
-   // Load images.json containing class images
-  axios.get('/images.json')
-    .then((response) => {
-      this.imageData = response.data; // Load image data (train/eval)
-    })
-    .catch((error) => {
-      console.error('Error loading images.json:', error);
-    });
-  const savedMappings = localStorage.getItem('imageClassMappings');
-  if (savedMappings) {
-    this.mappings = JSON.parse(savedMappings);
-  }
+    axios.get('/result_full.json') 
+      .then((response) => {
+        this.resultData = response.data;
+        this.loadMappings();
+      })
+      .catch((error) => {
+        console.error('Error loading result.json:', error);
+      });
+
+    axios.get('/images.json')
+      .then((response) => {
+        this.imageData = response.data;
+      })
+      .catch((error) => {
+        console.error('Error loading images.json:', error);
+      });
+    const savedMappings = localStorage.getItem('imageClassMappings');
+    if (savedMappings) {
+      this.mappings = JSON.parse(savedMappings);
+    }
   },
   methods: {
     getImagePath(classNumber) {
       const basePath = '/ts_7/train/';
       
-      // Check if the class number exists in the imageData
       if (!this.imageData['train'] || !this.imageData['train'][classNumber]) {
-        console.error(`No images found for class number: ${classNumber}`);
-        return '/path_to_placeholder_image.png'; // Optional: Placeholder image if class doesn't exist
+        return '';
       }
-      
+    
       const images = this.imageData['train'][classNumber];
 
       if (!images || images.length === 0) {
-        console.error(`No images available for class number: ${classNumber}`);
-        return '/path_to_placeholder_image.png'; // Optional: Placeholder image
+        return '';
       }
 
       const randomIndex = Math.floor(Math.random() * images.length);
@@ -113,22 +147,22 @@ export default {
       return `${basePath}${name}`;
 
     },
-    // Method to save the mapping when a user clicks "Set as Correct"
     setMapping(image, classNumber) {
-      // this.mappings = {
-      //   ...this.mappings,
-      //   [image]: classNumber,
-      // };
-      this.mappings[image] = classNumber; // Map the image to the selected class
+      this.mappings[image] = classNumber;
       this.saveMappings();
     },
     handleCustomClass(image) {
-      if (this.customClass) {
-        // Unselect any selected images
-        this.mappings[image] = this.customClass; // Store custom class
-        this.clearSelectedImages(image); // Clear selected images
+      const customClassValue = this.mappings[image];
+      if (customClassValue) {
+        // Directly assign the value in Vue 3
+        this.mappings[image] = customClassValue;
         this.saveMappings();
       }
+    },
+    saveCustomClass(image) {
+      this.mappings[image] = this.customClasses[image];
+      this.clearSelectedImages(image); // Unselect other images
+      this.saveMappings(); // Save to local storage
     },
     clearSelectedImages(image) {
       // Reset the mapping for the current image if a custom class is used
@@ -138,6 +172,9 @@ export default {
         }
       }
     },
+    getCurrentClass(image) {
+      return this.mappings[image] || 'None'; // Return 'None' if no class is mapped
+    },
     loadMappings() {
         const savedMappings = localStorage.getItem('imageClassMappings');
         if (savedMappings) {
@@ -145,9 +182,16 @@ export default {
         }
       },
     saveMappings() {
-      localStorage.setItem('imageClassMappings', JSON.stringify(this.mappings));
+      // Step 1: Retrieve the existing object from localStorage
+      const storedMappings = JSON.parse(localStorage.getItem('imageClassMappings')) || {};
+      // Step 2: Iterate over the current mappings in this.mappings and update storedMappings
+      Object.keys(this.mappings).forEach(image => {
+        storedMappings[image] = this.mappings[image]; // Update or add the mapping
+      });
+      // Step 3: Save the updated storedMappings back to localStorage
+      localStorage.setItem('imageClassMappings', JSON.stringify(storedMappings));
     },
-    exportMappings() {
+    exportMappings() { 
       const blob = new Blob([JSON.stringify(this.mappings, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -156,18 +200,27 @@ export default {
       a.click();
       URL.revokeObjectURL(url);
     },
-    saveCustomClass(image) {
-      if (this.customClasses[image]) {
-        // Store custom class in mappings and save it
-        this.mappings[image] = this.customClasses[image];
-        this.clearSelectedImages(image); // Unselect other images
-        this.saveMappings(); // Save to local storage
+    nextPage() {
+      if (this.currentPage < this.totalPages) {
+        this.currentPage += 1;
       }
-  },
+    },
+    prevPage() {
+      if (this.currentPage > 1) {
+        this.currentPage -= 1;
+      }
+    },
+    goToPage() {
+      if (this.targetPage >= 1 && this.targetPage <= this.totalPages) {
+        this.currentPage = this.targetPage; // Set the current page to the target page
+      } else {
+        alert(`Please enter a valid page number between 1 and ${this.totalPages}`);
+      }
+    },
   },
 };
 </script>
-.image-container {
+<!-- .image-container {
   margin-bottom: 20px;
 }
 
@@ -190,7 +243,7 @@ img {
   max-width: 100%; /* Ensures images fit within their columns */
   height: auto; /* Maintains aspect ratio */
 }
-</style> -->
+</style>  -->
 
 <style>
 .predictions-table {
